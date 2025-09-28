@@ -1,0 +1,5 @@
+com\optionalgo\OptionAlgoApplication.class
+com\optionalgo\model\SampleModel.class
+com\optionalgo\MySQLConnector.class
+com\optionalgo\repository\SampleModelRepository.class
+com\optionalgo\SampleModelController.class
