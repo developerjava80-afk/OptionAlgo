@@ -1,0 +1,5 @@
+kiteconnect==3.14.0
+pandas
+# Web UI
+Flask
+flask-cors

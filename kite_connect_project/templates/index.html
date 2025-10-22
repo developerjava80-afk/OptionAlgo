@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Kite Connect UI</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 20px; }
+      .container { max-width: 800px; margin: auto; }
+      .row { margin-bottom: 12px; }
+      input[type=text] { width: 100%; padding: 8px; }
+      select { width: 100%; padding: 8px; }
+      button { padding: 8px 16px; }
+      #results { white-space: pre-wrap; background: #f7f7f7; padding: 10px; border: 1px solid #ddd; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h2>Kite Connect – Symbol Selector & Strategy Runner</h2>
+
+      <div class="row">
+        <label for="search">Search symbols</label>
+        <input id="search" type="text" placeholder="Type to search symbols...">
+      </div>
+
+      <div class="row">
+        <label for="symbols">Symbols (select)</label>
+        <select id="symbols" size="8"></select>
+      </div>
+
+      <div class="row">
+        <label for="strategy">Strategy</label>
+        <select id="strategy"></select>
+      </div>
+
+      <div class="row">
+        <button id="run">Run Strategy</button>
+      </div>
+
+      <h3>Result</h3>
+      <div id="results">No results yet</div>
+    </div>
+
+    <script src="/static/app.js"></script>
+  </body>
+ </html>

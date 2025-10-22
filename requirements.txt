@@ -1,0 +1,5 @@
+# This repository contains a dedicated kite_connect_project folder.
+# Install dependencies for the kite project by running:
+#
+# pip install -r kite_connect_project/requirements.txt
+
