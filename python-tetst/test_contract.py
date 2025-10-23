@@ -1,20 +1,18 @@
-
 import pandas as pd
 from process_call_data import process_call_data
 from process_put_data import process_put_data
 from db_connector import DBConnector
 
 def main():
-    # Prompt user for date and contract
-    user_input = input("Enter date (dd-mm-yyyy) and contract (e.g. C48200 or P48200), separated by space: ")
-    try:
-        date_str, contract = user_input.strip().split()
-    except ValueError:
-        print("Invalid input format. Example: 01-02-2024 C48200")
-        return
+    # Prompt user for date parts and contract
+    day = input("Enter day (dd): ").zfill(2)
+    month = input("Enter month (mm): ").zfill(2)
+    year = input("Enter year (yyyy): ")
+    contract = input("Enter contract (e.g. C48200 or P48200): ").strip()
+    date_str = f"{month}-{day}-{year}"
 
-    # Convert date to table name pattern (e.g. 01-02-2024 -> 01022024)
-    table_name_pattern = date_str.replace('-', '')
+    # Convert to MMDDYYYY for table search
+    table_name_pattern = date_str
 
     # Connect to DB and get all tables
     config = {
@@ -25,6 +23,11 @@ def main():
     }
     db = DBConnector(config)
     dfs, table_names = db.get_tables()
+
+    # Print all available table names
+    print("Available tables:")
+    for tname in table_names:
+        print(f"  {tname}")
 
     # Find the table for the given date
     selected_df = None
@@ -44,12 +47,14 @@ def main():
         return
 
     # Process the contract
+    # Trim the table name to 20 characters before passing to processing functions
+    table_arg = str(selected_table)[:20]
     if contract.startswith('C'):
-        result_df = process_call_data(selected_df, selected_table, [contract])
-        print(f"Processed call contract {contract} in table {selected_table}")
+        result_df = process_call_data(selected_df, table_arg, [contract])
+        print(f"Processed call contract {contract} in table {selected_table} (arg: {table_arg})")
     elif contract.startswith('P'):
-        result_df = process_put_data(selected_df, selected_table, [contract])
-        print(f"Processed put contract {contract} in table {selected_table}")
+        result_df = process_put_data(selected_df, table_arg, [contract])
+        print(f"Processed put contract {contract} in table {selected_table} (arg: {table_arg})")
     else:
         print("Contract must start with 'C' or 'P'")
         return

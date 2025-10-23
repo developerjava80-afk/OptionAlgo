@@ -19,6 +19,8 @@ def process_put_data(df, table_name, put_columns):
         macd_line = ema12 - ema26
         signal_line = macd_line.ewm(span=9, adjust=False).mean()
         macd_hist = macd_line - signal_line
+        # Higher timeframe trend filter
+        ema200 = close.ewm(span=200, adjust=False).mean()
         delta = close.diff()
         gain = delta.clip(lower=0)
         loss = -delta.clip(upper=0)
@@ -49,38 +51,97 @@ def process_put_data(df, table_name, put_columns):
                 macd_hist_curr = macd_hist.iloc[idx]
                 rsi_curr = rsi.iloc[idx]
                 price_curr = close.iloc[idx]
+                ema200_curr = ema200.iloc[idx]
             except Exception:
                 continue
             signal_text = None
             event_printed = False
-            bull_signal = (macd_prev <= sig_prev) and (macd_curr > sig_curr) and (rsi_curr is not None and rsi_curr > 70)
-            bear_signal = (macd_prev >= sig_prev) and (macd_curr < sig_curr) and (rsi_curr is not None and rsi_curr < 30)
+            bull_signal = (
+                (macd_prev <= sig_prev)
+                and (macd_curr > sig_curr)
+                and (rsi_curr is not None and rsi_curr > 70)
+                and (pd.notna(ema200_curr) and price_curr > ema200_curr)
+            )
+            bear_signal = (
+                (macd_prev >= sig_prev)
+                and (macd_curr < sig_curr)
+                and (rsi_curr is not None and rsi_curr < 30)
+                and (pd.notna(ema200_curr) and price_curr < ema200_curr)
+            )
             # Entry/exit logic
             if bull_signal:
                 signal_text = 'Bullish Confirmed Signal'
                 if position is None:
+                    # Fresh LONG entry
                     position = 'long'
                     entry_type = 'buy'
                     entry_price = price_curr
-                    qty = 75
-                    profit_target = entry_price * 1.1
+                    qty = 75 if qty == 0 else qty
+                    profit_target = entry_price * 1.005
                     print(f"[{contract}] LONG opened at {entry_price:.2f}, qty={qty}, profit_target={profit_target:.2f}, total PNL={total_pnl:.2f}")
+                elif position == 'short':
+                    # Reverse from SHORT -> LONG
+                    exit_price = price_curr
+                    trade_pnl = compute_trade_pnl('sell', entry_price, exit_price, qty)
+                    total_pnl += trade_pnl
+                    closed_trades.append({
+                        'side': 'short', 'entry': float(entry_price), 'exit': float(exit_price),
+                        'qty': qty, 'pnl': float(trade_pnl), 'reason': 'Reversal on bull signal', 'index': int(idx)
+                    })
+                    print(f"[{contract}] SHORT EXIT (reversal) at {exit_price:.2f} (entry {entry_price:.2f}) | PNL={trade_pnl:.2f} | Total PNL={total_pnl:.2f}")
+                    # Open new LONG immediately
+                    position = 'long'
+                    entry_type = 'buy'
+                    entry_price = price_curr
+                    qty = 75 if qty == 0 else qty
+                    profit_target = entry_price * 1.005
+                    signal_text += ' (Reversal)'
+                    print(f"[{contract}] LONG opened (reversal) at {entry_price:.2f}, qty={qty}, profit_target={profit_target:.2f}, total PNL={total_pnl:.2f}")
             elif bear_signal:
                 signal_text = 'Bearish Confirmed Signal'
                 if position is None:
+                    # Fresh SHORT entry
                     position = 'short'
                     entry_type = 'sell'
                     entry_price = price_curr
-                    qty = 75
-                    profit_target = entry_price * 0.9
+                    qty = 75 if qty == 0 else qty
+                    profit_target = entry_price * 0.995
                     print(f"[{contract}] SHORT opened at {entry_price:.2f}, qty={qty}, profit_target={profit_target:.2f}, total PNL={total_pnl:.2f}")
+                elif position == 'long':
+                    # Reverse from LONG -> SHORT
+                    exit_price = price_curr
+                    trade_pnl = compute_trade_pnl('buy', entry_price, exit_price, qty)
+                    total_pnl += trade_pnl
+                    closed_trades.append({
+                        'side': 'long', 'entry': float(entry_price), 'exit': float(exit_price),
+                        'qty': qty, 'pnl': float(trade_pnl), 'reason': 'Reversal on bear signal', 'index': int(idx)
+                    })
+                    print(f"[{contract}] LONG EXIT (reversal) at {exit_price:.2f} (entry {entry_price:.2f}) | PNL={trade_pnl:.2f} | Total PNL={total_pnl:.2f}")
+                    # Open new SHORT immediately
+                    position = 'short'
+                    entry_type = 'sell'
+                    entry_price = price_curr
+                    qty = 75 if qty == 0 else qty
+                    profit_target = entry_price * 0.995
+                    signal_text += ' (Reversal)'
+                    print(f"[{contract}] SHORT opened (reversal) at {entry_price:.2f}, qty={qty}, profit_target={profit_target:.2f}, total PNL={total_pnl:.2f}")
             # Trailing profit booking logic
             if position == 'long':
+                # Adjust trailing target down when price pulls back below entry
                 if price_curr < entry_price:
                     diff = entry_price - price_curr
-                    if entry_price * 1.1 - profit_target < diff:
-                        profit_target = entry_price * 1.1 - diff
-                if price_curr >= profit_target:
+                    if (entry_price * 1.005 - profit_target) < diff:
+                        profit_target = entry_price * 1.005 - diff
+                # If target slipped below/at entry, force exit
+                if profit_target is not None and profit_target <= entry_price:
+                    exit_price = price_curr
+                    trade_pnl = compute_trade_pnl('buy', entry_price, exit_price, qty)
+                    total_pnl += trade_pnl
+                    print(f"[{contract}] LONG EXIT at {exit_price:.2f} (entry {entry_price:.2f}) | Target <= entry (forced) | Trade PNL={trade_pnl:.2f} | Total PNL={total_pnl:.2f}")
+                    position = None
+                    profit_target = None
+                    entry_price = None
+                elif price_curr >= profit_target:
                     exit_price = price_curr
                     trade_pnl = compute_trade_pnl('buy', entry_price, exit_price, qty)
                     total_pnl += trade_pnl
@@ -89,11 +150,21 @@ def process_put_data(df, table_name, put_columns):
                     profit_target = None
                     entry_price = None
             elif position == 'short':
+                # Adjust trailing target up when price bounces above entry
                 if price_curr > entry_price:
                     diff = price_curr - entry_price
-                    if profit_target - entry_price * 0.9 < diff:
-                        profit_target = entry_price * 0.9 + diff
-                if price_curr <= profit_target:
+                    if (profit_target - entry_price * 0.995) < diff:
+                        profit_target = entry_price * 0.995 + diff
+                # If target rose above/at entry, force exit
+                if profit_target is not None and profit_target >= entry_price:
+                    exit_price = price_curr
+                    trade_pnl = compute_trade_pnl('sell', entry_price, exit_price, qty)
+                    total_pnl += trade_pnl
+                    print(f"[{contract}] SHORT EXIT at {exit_price:.2f} (entry {entry_price:.2f}) | Target >= entry (forced) | Trade PNL={trade_pnl:.2f} | Total PNL={total_pnl:.2f}")
+                    position = None
+                    profit_target = None
+                    entry_price = None
+                elif price_curr <= profit_target:
                     exit_price = price_curr
                     trade_pnl = compute_trade_pnl('sell', entry_price, exit_price, qty)
                     total_pnl += trade_pnl
@@ -105,6 +176,7 @@ def process_put_data(df, table_name, put_columns):
                 'contract': contract,
                 'index': int(idx),
                 'price': float(price_curr),
+                'ema200': float(ema200_curr) if pd.notna(ema200_curr) else None,
                 'macd': float(macd_curr) if pd.notna(macd_curr) else None,
                 'signal': float(sig_curr) if pd.notna(sig_curr) else None,
                 'macd_hist': float(macd_hist_curr) if pd.notna(macd_hist_curr) else None,
