@@ -1,6 +1,5 @@
 from db_connector import DBConnector
-from process_call_data import process_call_data
-from process_put_data import process_put_data
+from process_option_data import process_option_data
 from manage_reports import save_results_to_excel
 import pandas as pd
 import os
@@ -66,12 +65,11 @@ class OptionAlgoMain:
                 continue
             banknifty_price = float(df[banknifty_col].iloc[29])
             c_cols, p_cols = self.select_option_columns(df, banknifty_price)
-            # Process only the selected OTM columns
-            if c_cols:
-                call_df = process_call_data(df, table_name_clean, c_cols)
-            if p_cols:
-                put_df = process_put_data(df, table_name_clean, p_cols)
-            combined_df = pd.concat([call_df, put_df], ignore_index=True)
+            opt_cols = c_cols + p_cols
+            # Process only the selected OTM columns using unified processor
+            combined_df = pd.DataFrame()
+            if opt_cols:
+                combined_df = process_option_data(df, table_name_clean, opt_cols)
             all_contracts.append(combined_df)
         if all_contracts:
             final_df = pd.concat(all_contracts, ignore_index=True)
